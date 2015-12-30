@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:aop="http://www.springframework.org/schema/aop"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:jdbc="http://www.springframework.org/schema/jdbc" xmlns:tx="http://www.springframework.org/schema/tx"
+	xmlns:mybatis="http://mybatis.org/schema/mybatis-spring"
+	xsi:schemaLocation="
+	http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.0.xsd
+	http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-4.0.xsd
+	http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.0.xsd
+	http://www.springframework.org/schema/jdbc http://www.springframework.org/schema/jdbc/spring-jdbc-4.0.xsd
+	http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.0.xsd
+	http://mybatis.org/schema/mybatis-spring http://mybatis.org/schema/mybatis-spring.xsd
+	">
+
+	<context:component-scan base-package="com.stefli" />
+
+	<bean id="propertyConfigurer"
+		class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+		<property name="locations">
+			<list>
+				<value>classpath:zk.properties</value>
+				<value>classpath:jdbc.properties</value>
+			</list>
+		</property>
+	</bean>
+
+	<bean id="dsParent"
+		class="org.springframework.jdbc.datasource.DriverManagerDataSource"
+		abstract="true">
+		<property name="driverClassName" value="${jdbc.driverClassName}" />
+		<property name="username" value="${jdbc.username}" />
+		<property name="password" value="${jdbc.password}" />
+	</bean>
+
+	<bean id="dsMaster" parent="dsParent">
+		<property name="url" value="${jdbc.master.url}"></property>
+	</bean>
+
+	<bean id="dsSlave1" parent="dsParent">
+		<property name="url" value="${jdbc.slave.1.url}"></property>
+	</bean>
+
+	<bean id="dsSlave2" parent="dsParent">
+		<property name="url" value="${jdbc.slave.2.url}"></property>
+	</bean>
+
+	<bean id="dataSource" class="com.stefli.db.core.CustomRoutingDataSource">
+		<property name="targetDataSources">
+			<map key-type="com.stefli.db.core.DataSourceType">
+				<entry key="MASTER" value-ref="dsMaster" />
+				<entry key="SLAVE1" value-ref="dsSlave1" />
+				<entry key="SLAVE2" value-ref="dsSlave2" />
+			</map>
+		</property>
+		<property name="defaultTargetDataSource" ref="dsMaster" />
+	</bean>
+
+	<bean id="transactionManager"
+		class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+
+	<tx:advice id="txAdvice" transaction-manager="transactionManager">
+		<tx:attributes>
+			<tx:method name="*" propagation="REQUIRED" />
+			<tx:method name="find*" read-only="true" />
+		</tx:attributes>
+	</tx:advice>
+
+	<bean id="dsAdvice" class="com.stefli.db.core.DataSourceAdvice" />
+
+	<aop:config>
+		<aop:pointcut expression="execution (* com.stefli.db.service.*.*(..))"
+			id="services" />
+		<aop:advisor advice-ref="dsAdvice" pointcut-ref="services"
+			order="10" />
+		<aop:advisor advice-ref="txAdvice" pointcut-ref="services"
+			order="20" />
+	</aop:config>
+
+	<bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+		<property name="dataSource" ref="dataSource" />
+		<property name="configLocation" value="classpath:mybatis-config.xml" />
+	</bean>
+
+</beans>
